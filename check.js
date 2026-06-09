@@ -1,101 +1,47 @@
-const { chromium } = require("playwright");
 const nodemailer = require("nodemailer");
 
-// ── Config ────────────────────────────────────────────────────────────────────
 const TARGET_URL =
   "https://www.georgiaaquarium.org/experience-tickets/?experienceId=938&prodSeasonIds=171819";
-const TARGET_MONTH = "October 2026";
-const TARGET_DAY = "17";
-const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL; // your address
-const SMTP_USER = process.env.SMTP_USER;       // Gmail address used to send
-const SMTP_PASS = process.env.SMTP_PASS;       // Gmail app password
-// ─────────────────────────────────────────────────────────────────────────────
+const TARGET_DATE = "10/17/2026";
+const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL;
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
 
 async function checkAvailability() {
   console.log(`[${new Date().toISOString()}] Starting check...`);
 
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+  const res = await fetch(TARGET_URL, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+    },
+  });
 
-  try {
-    // Step 1: load the page
-    await page.goto(TARGET_URL, { waitUntil: "networkidle", timeout: 30000 });
+  const html = await res.text();
 
-    // Step 2: click "Buy Now" on the experience-only (right) card
-    // The right card says "Experience tickets only." — find its Buy Now link
-    const buyNowBtn = page.locator(
-      'text="Experience tickets only."'
-    ).locator("..").locator('a:has-text("Buy Now")');
-    await buyNowBtn.waitFor({ timeout: 15000 });
-    await buyNowBtn.click();
-    console.log("Clicked Buy Now on experience-only card");
-
-    // Step 3: wait for "Things to Know" page, then click Continue To Tickets
-    const continueBtn = page.locator('[aria-label="Continue to Tickets"]').first();
-    await continueBtn.waitFor({ state: "attached", timeout: 15000 });
-    await continueBtn.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(500);
-    await continueBtn.click({ force: true });
-    console.log("Clicked Continue To Tickets");
-
-    // Step 4: wait for calendar to appear
-    await page.waitForSelector("text=Select Date", { timeout: 15000 });
-    console.log("Calendar loaded");
-
-    // Step 5: advance calendar until we see the target month
-    let attempts = 0;
-    while (attempts < 24) {
-      // read current month label
-      const monthLabel = await page.locator("text=" + TARGET_MONTH).count();
-      if (monthLabel > 0) {
-        console.log(`Found ${TARGET_MONTH}`);
-        break;
-      }
-      // click the right arrow (next month)
-      await page.locator('button[aria-label="Next month"], button:has-text("›"), svg[data-icon="chevron-right"]').first().click();
-      await page.waitForTimeout(600);
-      attempts++;
-    }
-
-    if (attempts >= 24) {
-      throw new Error(`Could not navigate to ${TARGET_MONTH} after 24 attempts`);
-    }
-
-    // Step 6: find the cell for day 17 and check if it's available
-    // Available days are clickable; sold-out days have a diagonal slash overlay
-    // The calendar renders each day as a button or div with the day number text.
-    // Sold-out cells typically carry a disabled attribute or a specific CSS class.
-    const dayCells = page.locator(`[role="gridcell"], td, .day-cell, button`).filter({ hasText: new RegExp(`^${TARGET_DAY}$`) });
-    const cellCount = await dayCells.count();
-    console.log(`Found ${cellCount} element(s) matching day "${TARGET_DAY}"`);
-
-    let isAvailable = false;
-
-    for (let i = 0; i < cellCount; i++) {
-      const cell = dayCells.nth(i);
-      const isDisabled =
-        (await cell.getAttribute("disabled")) !== null ||
-        (await cell.getAttribute("aria-disabled")) === "true";
-      const classAttr = (await cell.getAttribute("class")) || "";
-      // grayed-out sold-out cells typically have classes like "disabled", "unavailable", "sold-out"
-      const hasDisabledClass = /disabled|unavailable|sold.?out|strikethrough/i.test(classAttr);
-
-      if (!isDisabled && !hasDisabledClass) {
-        isAvailable = true;
-        console.log(`Day ${TARGET_DAY} appears AVAILABLE (cell ${i})`);
-        break;
-      } else {
-        console.log(`Day ${TARGET_DAY} cell ${i} is disabled. class="${classAttr}" disabled=${isDisabled}`);
-      }
-    }
-
-    await browser.close();
+  // Method 1: check experienceDates variable (swim-specific available dates)
+  const datesMatch = html.match(/experienceDates\s*=\s*\("([^"]+)"\)/);
+  if (datesMatch) {
+    const dates = datesMatch[1].split(",");
+    const isAvailable = dates.includes(TARGET_DATE);
+    console.log(`experienceDates list found. Oct 17 available: ${isAvailable}`);
+    console.log(`Available dates: ${dates.join(", ")}`);
     return isAvailable;
-
-  } catch (err) {
-    await browser.close();
-    throw err;
   }
+
+  // Method 2: fallback — check traffic-data JSON for zonecount > 0
+  const trafficMatch = html.match(/class="traffic-data"[^>]*>(\{.*?\})<\/div>/s);
+  if (trafficMatch) {
+    const trafficData = JSON.parse(trafficMatch[1]);
+    const oct17 = trafficData.dates?.["2026-10-17"];
+    if (oct17) {
+      const available = oct17.zonecount > 0;
+      console.log(`traffic-data found. Oct 17 zonecount: ${oct17.zonecount}, available: ${available}`);
+      return available;
+    }
+  }
+
+  throw new Error("Could not find availability data in page HTML");
 }
 
 async function sendEmail(available) {
