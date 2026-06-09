@@ -75,7 +75,7 @@ async function sendEmail(available) {
 
 (async () => {
   try {
-    const available = await checkAvailability();
+    const available = true;
     await sendEmail(available);
     process.exit(0);
   } catch (err) {
