@@ -31,7 +31,7 @@ async function checkAvailability() {
     console.log("Clicked Buy Now on experience-only card");
 
     // Step 3: wait for "Things to Know" page, then click Continue To Tickets
-    const continueBtn = page.locator('button:has-text("Continue To Tickets"), a:has-text("Continue To Tickets")');
+    const continueBtn = page.locator('button:has-text("Continue To Tickets"), a:has-text("Continue To Tickets")').first();
     await continueBtn.waitFor({ timeout: 15000 });
     await continueBtn.click();
     console.log("Clicked Continue To Tickets");
