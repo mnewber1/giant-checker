@@ -32,8 +32,10 @@ async function checkAvailability() {
 
     // Step 3: wait for "Things to Know" page, then click Continue To Tickets
     const continueBtn = page.locator('[aria-label="Continue to Tickets"]').first();
-    await continueBtn.waitFor({ timeout: 15000 });
-    await continueBtn.click();
+    await continueBtn.waitFor({ state: "attached", timeout: 15000 });
+    await continueBtn.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);
+    await continueBtn.click({ force: true });
     console.log("Clicked Continue To Tickets");
 
     // Step 4: wait for calendar to appear
