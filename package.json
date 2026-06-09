@@ -1,0 +1,13 @@
+{
+  "name": "aquarium-checker",
+  "version": "1.0.0",
+  "description": "Checks Georgia Aquarium swim experience availability",
+  "main": "check.js",
+  "scripts": {
+    "check": "node check.js"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.13",
+    "playwright": "^1.44.0"
+  }
+}
